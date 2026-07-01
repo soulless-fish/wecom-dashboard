@@ -1,0 +1,33 @@
+# Web框架
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# HTTP客户端
+httpx>=0.24.0
+
+# 数据验证
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# 数据库
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+
+# 定时任务
+apscheduler>=3.10.0
+
+# 缓存 (可选，后续启用)
+# redis>=4.6.0
+
+# 安全
+python-jose[cryptography]>=3.3.0
+cryptography>=41.0.0
+
+# 工具
+python-multipart>=0.0.6
+python-dotenv>=1.0.0
+paramiko>=3.4.0
+
+# Excel解析 (来客后台数据)
+openpyxl>=3.1.0
+xlrd>=2.0.1
