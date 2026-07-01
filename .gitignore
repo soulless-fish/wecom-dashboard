@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+conda_env/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 本地配置和敏感凭据
+.env
+.env.*
+!.env.example
+cookie_config.json
+life_data_cookie_config.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# 运行日志和临时文件
+*.log
+tmp/
+temp/
+
+# 业务数据和测试产物
+测试文件/
+操作日志/
+*.xlsx
+*.xls
+*.csv
+*.db
+*.sqlite
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
