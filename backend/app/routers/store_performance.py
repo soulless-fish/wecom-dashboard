@@ -7,6 +7,10 @@
 创建日期: 2026-01-15
 """
 
+import asyncio
+import time
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -28,6 +32,11 @@ from app.services.scheduler import (
 )
 from app.services.cookie_storage import load_cookie, save_cookie, load_life_data_cookie, save_life_data_cookie
 from app.services.store_phone_mapping import load_store_phone_mapping, get_store_phone_display
+from app.services.verify_average_client import (
+    VerifyAverageAuthError,
+    VerifyAverageClient,
+    VerifyAverageError,
+)
 
 router = APIRouter()
 _settings = get_settings()
@@ -69,6 +78,12 @@ class StorePerformanceResponse(BaseModel):
 # 从持久化文件加载Cookie配置（服务重启后不丢失）
 _gmv_cookie_config = load_cookie()
 _life_data_cookie_config = load_life_data_cookie()
+
+# 平均核销金额由所有侧边栏共用，避免每个侧边栏都直接请求生意经并触发限流。
+_verify_average_cache: Optional[dict[str, Any]] = None
+_verify_average_cache_time = 0.0
+_verify_average_cache_lock = asyncio.Lock()
+_VERIFY_AVERAGE_CACHE_TTL_SECONDS = 300
 
 
 def get_gmv_client() -> GmvDataClient:
@@ -134,6 +149,47 @@ async def get_cookie_status():
     }
 
 
+@router.get("/verify-average", summary="获取平均核销金额")
+async def get_verify_average():
+    """使用现有生意经 Cookie 获取当月和近30天平均核销金额。"""
+    global _verify_average_cache, _verify_average_cache_time
+
+    if not _life_data_cookie_config.get("cookie") or not _life_data_cookie_config.get("life_account_id"):
+        raise HTTPException(status_code=400, detail="来客后台Cookie未配置")
+
+    now = time.monotonic()
+    if _verify_average_cache and now - _verify_average_cache_time < _VERIFY_AVERAGE_CACHE_TTL_SECONDS:
+        # 短时间内的重复请求直接返回缓存，降低生意经接口压力。
+        return {"code": 0, "message": "success", "data": _verify_average_cache}
+
+    # 只允许一个请求刷新缓存，其余侧边栏等待同一份结果。
+    async with _verify_average_cache_lock:
+        now = time.monotonic()
+        if _verify_average_cache and now - _verify_average_cache_time < _VERIFY_AVERAGE_CACHE_TTL_SECONDS:
+            return {"code": 0, "message": "success", "data": _verify_average_cache}
+
+        client = VerifyAverageClient(
+            cookie=_life_data_cookie_config["cookie"],
+            life_account_id=_life_data_cookie_config["life_account_id"],
+            csrf_token=_life_data_cookie_config.get("csrf_token"),
+        )
+        try:
+            data = await client.fetch_average_metrics()
+        except VerifyAverageAuthError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except VerifyAverageError as exc:
+            raise HTTPException(status_code=502, detail="平均核销金额暂时无法获取，请稍后重试") from exc
+
+        _verify_average_cache = data
+        _verify_average_cache_time = time.monotonic()
+
+        return {
+            "code": 0,
+            "message": "success",
+            "data": data,
+        }
+
+
 @router.post("/life-data-cookie", summary="配置来客后台Cookie")
 async def update_life_data_cookie(request: LifeDataCookieConfigRequest):
     """
@@ -144,6 +200,11 @@ async def update_life_data_cookie(request: LifeDataCookieConfigRequest):
     _life_data_cookie_config["cookie"] = request.cookie
     _life_data_cookie_config["life_account_id"] = request.life_account_id
     _life_data_cookie_config["csrf_token"] = request.csrf_token
+
+    # Cookie 更新后清除旧的平均值缓存，下一次请求必须使用新的登录态重新抓取。
+    global _verify_average_cache, _verify_average_cache_time
+    _verify_average_cache = None
+    _verify_average_cache_time = 0.0
 
     # 持久化存储Cookie到文件
     save_life_data_cookie(request.cookie, request.life_account_id, request.csrf_token or "")

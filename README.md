@@ -1,6 +1,6 @@
 # 极修匠企业微信侧边栏门店经营数据中台
 
-这是一个面向连锁门店运营场景的企业微信侧边栏数据中台。员工在企业微信外部客户群中打开侧边栏后，系统会识别当前群聊对应的门店，并展示门店经营指标、门店视频数据、核销数据、抖音订单和凡科订单聚合结果。
+这是一个面向连锁门店运营场景的企业微信侧边栏数据中台。员工在企业微信外部客户群中打开侧边栏后，系统会识别当前群聊对应的门店，并展示门店经营指标、营业状态、团购商品、抖音账号、订单核销、凡科采购和巨量本地推数据。
 
 ## 项目能力
 
@@ -9,6 +9,10 @@
 - 抖音来客经营数据同步：门店上翻收益、直播时长、视频数量、评分、核销金额和核销券数。
 - 抖音开放平台订单同步：订单分页拉取、券码核销状态解析、商品分类和门店维度聚合。
 - 凡科商城订单同步：OAuth 授权、订单拉取、商品分类、手机号匹配门店和金额聚合。
+- 团购链接和营业状态：按商品 ID 同步门店团购商品，并展示正常营业、暂停营业或即将开业状态。
+- 抖音账号管理：展示子机构经营号、商家职人号和个人职人号。
+- 巨量引擎本地推：同步消耗、转化、转化成本和余额，并支持企业微信收集表与安全网页双通道填报。
+- 全国平均核销：按当月和近 30 天口径计算全门店核销基准。
 - AI 上下文接口：把门店身份、经营指标和同步状态整理成可供智能客服调用的数据接口。
 
 ## 技术栈
@@ -30,11 +34,14 @@ backend/
   requirements.txt
   .env.example
 
+JLYQ/
+  巨量引擎 OAuth、本地推同步、企业微信收集表和安全填写页服务
+
 frontend/
   src/
     api/           API 客户端
     utils/         企业微信 JS-SDK 初始化
-    views/         侧边栏页面和首页
+    views/         侧边栏、团购链接、抖音号和巨量引擎页面
   package.json
 
 docs/
@@ -51,6 +58,7 @@ docs/
 - 服务器 SSH 私钥、部署备份、运行日志。
 - 操作日志、测试文件、浏览器调试缓存、本地虚拟环境、node_modules。
 - 业务 Excel 数据表和真实订单明细数据。
+- 招商培训 H5 页面、报名接口和报名数据。
 
 ## 本地启动
 
@@ -83,7 +91,10 @@ npm run dev
 - 抖音开放平台：`DOUYIN_CLIENT_KEY`、`DOUYIN_CLIENT_SECRET`、`DOUYIN_ACCOUNT_ID`。
 - 抖音来客 / life-data：`LIFE_DATA_COOKIE`、`LIFE_DATA_ACCOUNT_ID`、`LIFE_DATA_CSRF_TOKEN`。
 - 凡科商城：`FANKE_CLIENT_ID`、`FANKE_CLIENT_SECRET`、`FANKE_RETURN_URL`。
+- 巨量引擎：`JLYQ_APP_ID`、`JLYQ_APP_SECRET`、`JLYQ_CALLBACK_URL`、`JLYQ_LIFE_ACCOUNT_IDS`。
 - MySQL：`MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`。
+
+巨量引擎门店权限表和商家填写模板属于业务数据，不在公开仓库中。启用对应功能时，需要按 `JLYQ/local_promotion_mapping.py` 和 `JLYQ/wecom_collection_service.py` 中的字段约定自行准备 Excel 文件。
 
 ## 安全说明
 

@@ -7,6 +7,8 @@ from app.services.token_manager import TokenManager
 from app.services.store_group_mapping import get_mapping_candidates
 from app.services.douyin_computer_cleaning_sync import build_store_computer_cleaning_summary
 from app.services.douyin_order_sync import build_store_douyin_order_summary
+from app.services.douyin_poi_account_sync import build_store_poi_account_summary
+from app.services.douyin_shop_business_status_sync import build_store_business_status_summary
 from app.services.fanke_order_sync import build_store_fanke_purchase_summary
 from app.services.store_phone_mapping import load_store_phone_mapping, get_store_phone_display, get_store_phone_row
 from app.config import get_settings, Settings
@@ -138,7 +140,9 @@ async def match_store_by_group_name(
             store_phones=phone_row.phones if phone_row else [],
         )
         douyin_order_summary = build_store_douyin_order_summary(db, order_poi_id)
+        douyin_poi_account_summary = build_store_poi_account_summary(db, order_poi_id)
         computer_cleaning_summary = build_store_computer_cleaning_summary(db, order_poi_id)
+        business_status_summary = build_store_business_status_summary(db, order_poi_id, store.poi_name)
         payload = {
             "poi_id": output_poi_id,
             "poi_name": store.poi_name,
@@ -156,6 +160,8 @@ async def match_store_by_group_name(
             "data_start_day": store.data_start_day,
             "data_end_day": store.data_end_day,
         }
+        payload.update(business_status_summary)
+        payload.update(douyin_poi_account_summary)
         payload.update(computer_cleaning_summary)
         payload.update(douyin_order_summary)
         payload.update(fanke_summary)

@@ -153,3 +153,30 @@ export function sendChatMessage(content) {
     })
   })
 }
+
+// 把填写链接作为 H5 卡片发送到当前企业微信会话。
+export function sendChatNewsMessage({ link, title, desc, imgUrl }) {
+  return new Promise((resolve, reject) => {
+    if (!isWeComEnvironment()) {
+      reject(new Error('非企业微信环境'))
+      return
+    }
+
+    wx.invoke('sendChatMessage', {
+      msgtype: 'news',
+      enterChat: false,
+      news: {
+        link,
+        title,
+        desc,
+        imgUrl
+      }
+    }, (res) => {
+      if (res.err_msg === 'sendChatMessage:ok') {
+        resolve(true)
+      } else {
+        reject(new Error(res.err_msg || '发送填写卡片失败'))
+      }
+    })
+  })
+}

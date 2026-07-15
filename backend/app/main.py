@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 import os
+import sys
+from pathlib import Path
 from datetime import date
 from app.config import get_settings
 from app.routers import wecom, jssdk, callback, douyin, life_data, debug, store_performance, ai_context, fanke
@@ -16,9 +18,17 @@ from app.services.scheduler import (
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# 巨量引擎相关代码按项目要求放在仓库根目录 JLYQ 中，这里只做路由挂载。
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from JLYQ.oauth_router import router as jlyq_router
+from JLYQ.local_promotion_router import router as jlyq_local_promotion_router
+
 # 环境变量控制是否启动调度器（解决多worker重复启动问题）
 # 多进程部署时，只有设置 ENABLE_SCHEDULER=true 的worker才启动调度器
-# 公开版本默认不启动定时任务，生产部署时再通过 ENABLE_SCHEDULER=true 显式开启。
+# 公开版本默认关闭定时任务，生产部署时再显式开启。
 ENABLE_SCHEDULER = os.environ.get("ENABLE_SCHEDULER", "false").lower() == "true"
 
 
@@ -132,6 +142,8 @@ app.include_router(life_data.router, prefix=f"{settings.api_prefix}/life-data", 
 app.include_router(store_performance.router, prefix=f"{settings.api_prefix}/store-performance", tags=["门店业绩数据"])
 app.include_router(ai_context.router, prefix=f"{settings.api_prefix}/ai", tags=["AI门店数据接口"])
 app.include_router(fanke.router, prefix=f"{settings.api_prefix}/fanke", tags=["凡科商城接口"])
+app.include_router(jlyq_router, prefix=f"{settings.api_prefix}/jlyq", tags=["巨量引擎接口"])
+app.include_router(jlyq_local_promotion_router, prefix=f"{settings.api_prefix}/jlyq", tags=["巨量引擎本地推接口"])
 if settings.debug:
     app.include_router(debug.router, prefix=f"{settings.api_prefix}/debug", tags=["API调试"])
 

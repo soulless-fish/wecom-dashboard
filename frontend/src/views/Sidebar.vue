@@ -33,26 +33,87 @@
 
       <!-- 循环显示每个门店 -->
       <div v-for="(store, index) in storesData" :key="store.poi_id || index" class="store-info-box">
-        <div class="section-title">门店业绩{{ storesData.length > 1 ? ` (${index + 1}/${storesData.length})` : '' }}</div>
+        <div class="section-title section-title-with-action">
+          <span>门店业绩{{ storesData.length > 1 ? ` (${index + 1}/${storesData.length})` : '' }}</span>
+          <div class="section-actions">
+            <button
+              v-if="showJlyqButton(store, index)"
+              class="jlyq-action-btn"
+              type="button"
+              @click="openJlyqPage(store)"
+            >
+              巨量引擎
+            </button>
+          </div>
+        </div>
         <div class="info-list">
-          <div class="info-item">
-            <span class="info-label">店铺名称:</span>
-            <span class="info-value">{{ store.poi_name }}</span>
+          <!-- 门店快捷入口集中展示在店铺名称上方，巨量引擎入口保持在标题栏。 -->
+          <div class="store-quick-actions" aria-label="门店快捷入口">
+            <button
+              class="douyin-account-action-btn"
+              type="button"
+              @click="openDouyinAccountPage(store)"
+            >
+              抖音号
+            </button>
+            <button
+              class="group-purchase-action-btn"
+              type="button"
+              @click="openGroupPurchasePage(store)"
+            >
+              团购链接
+            </button>
           </div>
           <div class="info-item">
-            <span class="info-label">电脑清灰:</span>
-            <span class="info-value">
-              <span v-if="store.computer_cleaning_opened" class="status-tag success computer-cleaning-tag">已开通</span>
-              <span v-else class="status-tag danger computer-cleaning-tag">未开通</span>
+            <span class="info-label">店铺名称:</span>
+            <span class="info-value store-name-value">
+              <span class="store-name-text">{{ store.poi_name }}</span>
+              <button
+                class="copy-field-btn"
+                type="button"
+                :aria-label="`复制店铺名称${store.poi_name || ''}`"
+                :disabled="!hasCopyValue(store.poi_name)"
+                @click="copyStoreField(store.poi_name, `name-${index}`)"
+              >
+                {{ copiedField === `name-${index}` ? '已复制' : '复制' }}
+              </button>
+              <span
+                v-if="store.business_status_text"
+                :class="['business-status-text', getBusinessStatusClass(store)]"
+              >
+                {{ store.business_status_text }}
+              </span>
             </span>
           </div>
           <div class="info-item">
             <span class="info-label">门店电话:</span>
-            <span class="info-value">{{ formatStorePhone(store.store_phone) }}</span>
+            <span class="info-value info-value-with-action">
+              <span>{{ formatStorePhone(store.store_phone) }}</span>
+              <button
+                class="copy-field-btn"
+                type="button"
+                :aria-label="`复制门店电话${formatStorePhone(store.store_phone)}`"
+                :disabled="!hasCopyValue(store.store_phone)"
+                @click="copyStoreField(store.store_phone, `phone-${index}`)"
+              >
+                {{ copiedField === `phone-${index}` ? '已复制' : '复制' }}
+              </button>
+            </span>
           </div>
           <div class="info-item">
             <span class="info-label">店铺ID:</span>
-            <span class="info-value">{{ store.poi_id }}</span>
+            <span class="info-value info-value-with-action">
+              <span>{{ store.poi_id }}</span>
+              <button
+                class="copy-field-btn"
+                type="button"
+                :aria-label="`复制店铺ID${store.poi_id || ''}`"
+                :disabled="!hasCopyValue(store.poi_id)"
+                @click="copyStoreField(store.poi_id, `id-${index}`)"
+              >
+                {{ copiedField === `id-${index}` ? '已复制' : '复制' }}
+              </button>
+            </span>
           </div>
           <div class="info-item">
             <span class="info-label">店铺评分:</span>
@@ -78,11 +139,26 @@
               <span v-else class="status-tag warning">未达标</span>
             </span>
           </div>
+          <!-- 全国平均核销是全门店基准，和当前门店数据分开显示。 -->
+          <div class="info-item">
+            <span class="info-label">全国平均核销:</span>
+            <span class="info-value">
+              <span v-if="verifyAverageLoading" class="date-tag">加载中</span>
+              <template v-else-if="verifyAverageData.current_month">
+                <span class="highlight-orange">{{ getVerifyAverageDisplay('current_month') }}</span>
+                <span class="date-tag">(当月)</span>
+                <span class="metric-separator">;</span>
+                <span class="highlight-orange">{{ getVerifyAverageDisplay('last_thirty_days') }}</span>
+                <span class="date-tag">(近30天)</span>
+              </template>
+              <span v-else class="date-tag">{{ verifyAverageMessage || '暂未获取' }}</span>
+            </span>
+          </div>
           <div class="info-item">
             <span class="info-label">核销金额:</span>
             <span class="info-value">
               <span class="highlight-orange">{{ store.verify_amount_realtime || '¥0.00' }}</span>
-              <span class="date-tag">(实时)</span>
+              <span class="date-tag">(当月)</span>
               <span class="metric-separator">;</span>
               <span class="highlight-orange">{{ store.verify_amount || '¥0.00' }}</span>
               <span class="date-tag">(近30天)</span>
@@ -92,7 +168,7 @@
             <span class="info-label">核销券数:</span>
             <span class="info-value">
               <span class="highlight-green">{{ store.verify_cert_cnt_realtime ?? 0 }}</span>
-              <span class="date-tag">(实时)</span>
+              <span class="date-tag">(当月)</span>
               <span class="metric-separator">;</span>
               <span class="highlight-green">{{ store.verify_cert_cnt ?? 0 }}</span>
               <span class="date-tag">(近30天)</span>
@@ -165,7 +241,7 @@
       </div>
 
       <!-- 版本号 -->
-      <div class="version-info">极修匠 v1.9.0</div>
+      <div class="version-info">极修匠 v1.10.0</div>
     </template>
 
     <!-- 调试信息（开发环境显示） -->
@@ -181,7 +257,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { wecomApi } from '../api'
+import { useRouter } from 'vue-router'
+import { jlyqApi, storePerformanceApi, wecomApi } from '../api'
 import {
   isWeComEnvironment,
   initWeComSDK,
@@ -191,6 +268,7 @@ import {
 } from '../utils/wecom'
 
 // 状态
+const router = useRouter()
 const loading = ref(true)
 const loadingText = ref('初始化中...')
 const error = ref('')
@@ -201,6 +279,11 @@ const warningText = ref('')
 const chatId = ref('')
 const groupName = ref('')
 const storesData = ref([])  // 改为数组，支持多门店
+const jlyqPermissionMap = ref({})
+const verifyAverageData = ref({})
+const verifyAverageLoading = ref(false)
+const verifyAverageMessage = ref('')
+const copiedField = ref('')
 
 // 环境检测
 const isWeCom = ref(false)
@@ -244,9 +327,166 @@ function formatPoiScore(value) {
   return Number.isFinite(numericValue) ? numericValue.toFixed(2) : '-'
 }
 
+// 读取后端已经按两位小数格式化的平均核销金额。
+function getVerifyAverageDisplay(periodKey) {
+  return verifyAverageData.value?.[periodKey]?.average_verify_amount_display || '¥0.00'
+}
+
+// 判断复制按钮是否有实际文本，避免把“无”或空值写入剪贴板。
+function hasCopyValue(value) {
+  return String(value ?? '').trim() !== ''
+}
+
+// 复制门店基础字段，并只记录当前门店当前字段的短暂反馈状态。
+async function copyStoreField(value, fieldKey) {
+  const text = String(value ?? '').trim()
+  if (!text) return
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    copiedField.value = fieldKey
+    window.setTimeout(() => {
+      if (copiedField.value === fieldKey) copiedField.value = ''
+    }, 1500)
+  } catch (err) {
+    console.warn('复制门店字段失败:', err)
+  }
+}
+
+// 基准值获取失败时保留门店主数据，不让整页进入错误状态。
+async function loadVerifyAverage() {
+  verifyAverageLoading.value = true
+  verifyAverageData.value = {}
+  verifyAverageMessage.value = ''
+  try {
+    const response = await storePerformanceApi.getVerifyAverage()
+    if (response?.code === 0 && response.data) {
+      verifyAverageData.value = response.data
+    }
+  } catch (err) {
+    verifyAverageMessage.value = err?.response?.data?.detail || '暂未获取'
+    console.warn('平均核销金额获取失败:', verifyAverageMessage.value)
+  } finally {
+    verifyAverageLoading.value = false
+  }
+}
+
 function formatStorePhone(value) {
   if (value === null || value === undefined || value === '') return '无'
   return String(value)
+}
+
+function getBusinessStatusClass(store) {
+  // 营业状态样式优先使用后端分类，缺失时按中文文案兜底判断。
+  const statusClass = String(store?.business_status_class || '').trim()
+  if (statusClass) return statusClass
+  const text = String(store?.business_status_text || '')
+  if (text.includes('正常营业')) return 'normal'
+  if (text.includes('暂停营业')) return 'paused'
+  if (text.includes('即将开业')) return 'upcoming'
+  return ''
+}
+
+function formatDouyinPoiAccount(store) {
+  // 经营抖音号来自来客抖音号管理接口，只展示子机构经营号。
+  const accountName = String(store?.douyin_poi_account_name || '').trim()
+  return accountName || '暂无'
+}
+
+function shortenDouyinPoiAccountStatus(value) {
+  // 状态里可能带审核失败原因，侧边栏保留前 28 个字符，避免窄屏撑开。
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  return text.length > 28 ? `${text.slice(0, 28)}...` : text
+}
+
+function getDouyinPoiAccountStatusClass(value) {
+  // 已绑定展示为成功，其余状态统一用醒目的待处理样式。
+  const text = String(value || '')
+  return text.includes('已绑定') ? 'success' : 'warning'
+}
+
+function getStoreKey(store, index = 0) {
+  // 用门店ID优先生成前端权限缓存键，缺失时再用门店名称兜底。
+  return String(store?.poi_id || store?.poi_name || index)
+}
+
+function showJlyqButton(store, index) {
+  // 只有权限表命中的外部群或门店才显示巨量引擎入口。
+  const permission = jlyqPermissionMap.value[getStoreKey(store, index)]
+  return Boolean(permission && permission.authorized)
+}
+
+async function loadJlyqPermissions() {
+  // 门店数据加载完成后查询巨量权限，失败时只隐藏入口，不影响原门店业绩展示。
+  const entries = await Promise.all((storesData.value || []).map(async (store, index) => {
+    try {
+      const res = await jlyqApi.getSidebarData({
+        group_name: groupName.value,
+        poi_name: store.poi_name || ''
+      })
+      const data = res?.data || {}
+      return [
+        getStoreKey(store, index),
+        {
+          authorized: Boolean(data.authorized),
+          accountCount: Array.isArray(data.accounts) ? data.accounts.length : 0
+        }
+      ]
+    } catch (err) {
+      console.warn('巨量引擎权限查询失败:', err)
+      return [getStoreKey(store, index), { authorized: false, accountCount: 0 }]
+    }
+  }))
+  jlyqPermissionMap.value = Object.fromEntries(entries)
+}
+
+function openJlyqPage(store) {
+  // 跳转详情页时带上群ID、群名和门店名，发送填写卡片时继续使用当前外部群上下文。
+  router.push({
+    path: '/jlyq',
+    query: {
+      chat_id: chatId.value || '',
+      group_name: groupName.value || '',
+      poi_name: store?.poi_name || ''
+    }
+  })
+}
+
+function openGroupPurchasePage(store) {
+  // 团购链接每个门店都可查看，按门店ID读取命中的商品列表。
+  router.push({
+    path: '/group-purchase',
+    query: {
+      poi_id: store?.poi_id || '',
+      poi_name: store?.poi_name || '',
+      group_name: groupName.value || ''
+    }
+  })
+}
+
+function openDouyinAccountPage(store) {
+  // 抖音号详情页按门店ID读取子机构经营号，并按门店名称匹配职人号。
+  router.push({
+    path: '/douyin-accounts',
+    query: {
+      poi_id: store?.poi_id || '',
+      poi_name: store?.poi_name || '',
+      group_name: groupName.value || ''
+    }
+  })
 }
 
 // 格式化抖音订单时间，侧边栏只展示月日和时分。
@@ -273,6 +513,8 @@ async function initSidebar() {
   loading.value = true
   error.value = ''
   warningText.value = ''
+  verifyAverageData.value = {}
+  verifyAverageMessage.value = ''
 
   try {
     isWeCom.value = isWeComEnvironment()
@@ -335,7 +577,11 @@ async function initSidebar() {
     // 根据群名匹配门店
     if (groupName.value) {
       loadingText.value = '匹配门店数据...'
-      const matchRes = await wecomApi.matchStore(groupName.value)
+      // 门店匹配和全门店平均值并行请求，避免新增指标额外拉长侧边栏等待时间。
+      const [matchRes] = await Promise.all([
+        wecomApi.matchStore(groupName.value),
+        loadVerifyAverage()
+      ])
 
       if (matchRes.code === 0) {
         // 优先使用stores数组，向后兼容data字段
@@ -348,6 +594,10 @@ async function initSidebar() {
         // 显示警告（部分门店未找到）
         if (matchRes.warning) {
           warningText.value = matchRes.warning
+        }
+
+        if (storesData.value.length > 0) {
+          await loadJlyqPermissions()
         }
       } else {
         emptyText.value = matchRes.message || '未匹配到门店'
@@ -423,8 +673,124 @@ onMounted(() => {
   border-bottom: 1px solid #e8e8e8;
 }
 
+.section-title-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.section-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.jlyq-action-btn {
+  min-width: 82px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2f8cff 0%, #0f62fe 52%, #0647c9 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 30px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 8px 16px rgba(15, 98, 254, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+  white-space: nowrap;
+}
+
+.group-purchase-action-btn {
+  min-width: 86px;
+  min-height: 30px;
+  padding: 0 13px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff4f9a 0%, #e11d72 48%, #b9145c 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 30px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 8px 16px rgba(225, 29, 114, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease, background 0.16s ease;
+  white-space: nowrap;
+}
+
+.group-purchase-action-btn:hover {
+  background: linear-gradient(135deg, #ff66aa 0%, #f02b83 48%, #c51666 100%);
+  filter: saturate(1.08) brightness(1.03);
+}
+
+.group-purchase-action-btn:active {
+  transform: translateY(2px) scale(0.97);
+  box-shadow: 0 4px 10px rgba(225, 29, 114, 0.22), inset 0 2px 5px rgba(103, 10, 49, 0.28);
+  filter: saturate(1.12);
+}
+
+.douyin-account-action-btn {
+  min-width: 86px;
+  min-height: 30px;
+  padding: 0 13px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #b7f34b 0%, #22c55e 48%, #06b6d4 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 30px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 8px 16px rgba(34, 197, 94, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease, background 0.16s ease;
+  white-space: nowrap;
+}
+
+.douyin-account-action-btn:hover {
+  background: linear-gradient(135deg, #c7ff61 0%, #2ddf73 48%, #0fc9df 100%);
+  filter: saturate(1.08) brightness(1.03);
+}
+
+.douyin-account-action-btn:active {
+  transform: translateY(2px) scale(0.97);
+  box-shadow: 0 4px 10px rgba(34, 197, 94, 0.22), inset 0 2px 5px rgba(10, 105, 70, 0.26);
+  filter: saturate(1.12);
+}
+
+.jlyq-action-btn:active {
+  transform: translateY(2px) scale(0.98);
+  box-shadow: 0 4px 10px rgba(15, 98, 254, 0.22), inset 0 2px 4px rgba(0, 36, 120, 0.24);
+  filter: saturate(1.06);
+}
+
 .info-list {
   padding: 12px 16px;
+}
+
+.store-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  margin-bottom: 2px;
+  border-bottom: 1px dashed #f0f0f0;
+}
+
+.store-quick-actions .douyin-account-action-btn,
+.store-quick-actions .group-purchase-action-btn {
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 28px;
+  box-shadow: none;
 }
 
 .info-item {
@@ -448,6 +814,69 @@ onMounted(() => {
 .info-value {
   color: #333;
   word-break: break-all;
+}
+
+.store-name-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+}
+
+.store-name-text {
+  word-break: break-all;
+}
+
+.info-value-with-action {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 基础信息复制按钮保持紧凑，避免挤压侧边栏数据。 */
+.copy-field-btn {
+  padding: 1px 7px;
+  border: 1px solid #91caff;
+  border-radius: 3px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy-field-btn:hover:not(:disabled) {
+  background: #bae0ff;
+}
+
+.copy-field-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.copy-field-btn:disabled {
+  border-color: #d9d9d9;
+  background: #f5f5f5;
+  color: #bfbfbf;
+  cursor: not-allowed;
+}
+
+.business-status-text {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.business-status-text.normal {
+  color: #22a35a;
+}
+
+.business-status-text.paused {
+  color: #f5222d;
+}
+
+.business-status-text.upcoming {
+  color: #d48806;
 }
 
 .highlight-orange {

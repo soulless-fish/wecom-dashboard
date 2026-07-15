@@ -1,8 +1,8 @@
 """
-抖音电脑清灰团购商品同步服务。
+抖音团购链接商品同步服务。
 
-该服务使用抖音开放平台商品线上数据列表接口，判断每个门店是否关联指定的
-电脑清灰团购商品，并把结果写入独立状态表供企业微信侧边栏读取。
+该服务使用抖音开放平台商品线上数据接口，判断每个门店是否关联指定
+商品 ID 的团购商品，并把结果写入独立状态表供企业微信侧边栏读取。
 """
 
 from __future__ import annotations
@@ -28,15 +28,36 @@ from app.services.douyin_token_manager import DouyinTokenManager
 
 logger = logging.getLogger(__name__)
 
-TARGET_KEYWORD = "笔记本"
-TARGET_PRODUCT_IDS = {
-    "1835072917422080": "【更换硅脂】笔记本深度清理",
-    "1835073554323456": "【更换液金】笔记本深度清理",
-    "1839132336458763": "【系统重装】笔记本/台式机系统重装（2选1）",
+# 团购链接按固定商品 ID 匹配，name 是侧边栏详情页展示的简化名称。
+GROUP_PURCHASE_TARGET_PRODUCTS: list[dict[str, Any]] = [
+    {"name": "1080p屏幕 OLED柔性屏", "product_ids": ["1867393674478604"]},
+    {"name": "高色域ultra1080P屏幕", "product_ids": ["1825383164261403"]},
+    {"name": "720屏幕", "product_ids": ["1847568239556666"]},
+    {"name": "9.9钢化膜", "product_ids": ["1826381803794464"]},
+    {"name": "3D热弯膜", "product_ids": ["1869956389044256"]},
+    {"name": "3D热弯AR增透", "product_ids": ["1855818276449303"]},
+    {"name": "UV硅胶光固膜", "product_ids": ["1848203226597386"]},
+    {"name": "平板膜", "product_ids": ["1866395308673082"]},
+    {"name": "星允防窥膜", "product_ids": ["1866394196552707"]},
+    {"name": "洗水印", "product_ids": ["1860594407549963"]},
+    {"name": "安卓直面外屏", "product_ids": ["1845865858386999"]},
+    {"name": "曲面外屏", "product_ids": ["1867572736963609", "1845868803277828"]},
+    {"name": "苹果外屏", "product_ids": ["1867572684955658"]},
+    {"name": "扩容", "product_ids": ["1831883261393920"]},
+    {"name": "电脑清灰（液金）", "product_ids": ["1835073554323456"]},
+    {"name": "电脑清灰（硅脂）", "product_ids": ["1835072917422080"]},
+    {"name": "电脑系统", "product_ids": ["1839132336458763"]},
+    {"name": "手表", "product_ids": ["1867844762037307", "1867422424069164"]},
+]
+GROUP_PURCHASE_PRODUCT_NAME_BY_ID = {
+    product_id: item["name"]
+    for item in GROUP_PURCHASE_TARGET_PRODUCTS
+    for product_id in item["product_ids"]
 }
-PRODUCT_ONLINE_QUERY_ENDPOINT = "/goodlife/v1/goods/product/online/query/"
+GROUP_PURCHASE_TARGET_PRODUCT_IDS = list(GROUP_PURCHASE_PRODUCT_NAME_BY_ID.keys())
+PRODUCT_ONLINE_GET_ENDPOINT = "/goodlife/v1/goods/product/online/get/"
 SYNC_QUERY_MODE = "fresh_openapi_query_each_run"
-SYNC_QUERY_MODE_TEXT = "每次同步都实时调用抖音来客商品线上数据列表接口，不复用历史商品查询结果"
+SYNC_QUERY_MODE_TEXT = "每次同步都按固定团购商品 ID 实时调用抖音来客商品线上数据接口，不复用历史商品查询结果"
 
 
 def _json_dumps(value: Any) -> str:
@@ -63,6 +84,24 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _normalize_keyword_text(value: Any) -> str:
+    """归一化商品名和关键词，便于大小写、括号和空白差异匹配。"""
+    text = str(value or "").strip()
+    text = text.replace("（", "(").replace("）", ")")
+    text = "".join(text.split())
+    return text.lower()
+
+
+def _target_group_purchase_name(product_id: Any) -> str:
+    """按商品 ID 返回详情页要展示的简化团购名称。"""
+    return GROUP_PURCHASE_PRODUCT_NAME_BY_ID.get(str(product_id or "").strip(), "")
+
+
+def _matched_group_purchase_keywords(product_name: str) -> list[str]:
+    """兼容旧字段，固定 ID 模式下不再按标题返回关键词。"""
+    return []
 
 
 def _first_value(value: Any, keys: tuple[str, ...]) -> Any:
@@ -148,64 +187,72 @@ def _extract_online_products(body: dict[str, Any]) -> list[dict[str, Any]]:
     data = body.get("data") if isinstance(body, dict) else {}
     if not isinstance(data, dict):
         return []
-    products = data.get("products") or data.get("product_onlines") or data.get("product_list") or []
-    return [item for item in products if isinstance(item, dict)] if isinstance(products, list) else []
+    products = (
+        data.get("products")
+        or data.get("product_onlines")
+        or data.get("product_list")
+        or data.get("product_online_list")
+        or []
+    )
+    if isinstance(products, list):
+        return [item for item in products if isinstance(item, dict)]
+    single_product = data.get("product_online") or data.get("product") or data.get("product_info")
+    if isinstance(single_product, dict):
+        return [single_product]
+    if _extract_product_id(data):
+        return [data]
+    return []
 
 
-async def fetch_computer_cleaning_online_products(client: DouyinClient, max_pages: int = 20) -> list[dict[str, Any]]:
-    """分页实时拉取名称包含“笔记本”的在线团购商品。"""
+async def fetch_group_purchase_online_products(client: DouyinClient, max_pages: int = 20) -> list[dict[str, Any]]:
+    """按固定商品 ID 实时拉取在线团购商品，并按商品 ID 去重。"""
     products: list[dict[str, Any]] = []
-    cursor = ""
+    seen_product_ids: set[str] = set()
 
-    for _page in range(max(max_pages, 1)):
+    for product_id in GROUP_PURCHASE_TARGET_PRODUCT_IDS:
         params: dict[str, Any] = {
             "account_id": client.token_manager.get_account_id(),
-            "count": 20,
-            "product_name": TARGET_KEYWORD,
-            # 必须查询商品全量关联门店，否则 product.pois 只会返回部分门店，导致已开通门店数偏小。
+            "product_ids": product_id,
+            # 必须查询商品全量关联门店，否则 product.pois 只会返回部分门店，导致门店命中数量偏小。
             "query_all_poi": True,
-            "status": 1,
         }
-        if cursor:
-            params["cursor"] = cursor
-
         body = await client.call_api(
             "GET",
-            PRODUCT_ONLINE_QUERY_ENDPOINT,
+            PRODUCT_ONLINE_GET_ENDPOINT,
             params=params,
             use_account_header=True,
         )
-        data = body.get("data") if isinstance(body, dict) else {}
-        if not isinstance(data, dict):
-            break
-
-        products.extend(_extract_online_products(body))
-
-        if not data.get("has_more"):
-            break
-        next_cursor = str(data.get("next_cursor") or "").strip()
-        if not next_cursor or next_cursor == cursor:
-            break
-        cursor = next_cursor
+        for product in _extract_online_products(body):
+            extracted_id = _extract_product_id(product) or product_id
+            if extracted_id not in GROUP_PURCHASE_PRODUCT_NAME_BY_ID or extracted_id in seen_product_ids:
+                continue
+            seen_product_ids.add(extracted_id)
+            products.append(product)
 
     return products
 
 
-def _build_open_products_by_poi(products: list[dict[str, Any]]) -> dict[str, list[dict[str, str]]]:
-    """把目标商品展开为 poi_id -> 商品摘要列表。"""
-    opened_by_poi: dict[str, list[dict[str, str]]] = {}
+async def fetch_computer_cleaning_online_products(client: DouyinClient, max_pages: int = 20) -> list[dict[str, Any]]:
+    """兼容旧调用名，实际拉取团购链接关键词商品。"""
+    return await fetch_group_purchase_online_products(client, max_pages=max_pages)
+
+
+def _build_open_products_by_poi(products: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """把目标团购商品展开为 poi_id -> 商品摘要列表。"""
+    opened_by_poi: dict[str, list[dict[str, Any]]] = {}
 
     for product_online in products:
         product_id = _extract_product_id(product_online)
-        if product_id not in TARGET_PRODUCT_IDS:
+        simplified_name = _target_group_purchase_name(product_id)
+        if not simplified_name:
             continue
         if _extract_online_status(product_online) != 1:
             continue
 
-        product_name = _extract_product_name(product_online) or TARGET_PRODUCT_IDS[product_id]
         product_summary = {
             "product_id": product_id,
-            "product_name": product_name,
+            "product_name": simplified_name,
+            "matched_keywords": [],
         }
         for poi_id in _extract_poi_ids(product_online):
             opened_by_poi.setdefault(poi_id, [])
@@ -243,12 +290,12 @@ def _upsert_status_row(
     *,
     account_id: str,
     poi_id: str,
-    matched_products: list[dict[str, str]],
+    matched_products: list[dict[str, Any]],
     sync_time: datetime,
 ) -> None:
     """新增或更新单个门店的电脑清灰开通状态。"""
-    product_ids = [item["product_id"] for item in matched_products]
-    product_names = [item["product_name"] for item in matched_products]
+    product_ids = [item.get("product_id", "") for item in matched_products]
+    product_names = [item.get("product_name", "") for item in matched_products]
     row = (
         db.query(DouyinComputerCleaningStatus)
         .filter(
@@ -269,8 +316,37 @@ def _upsert_status_row(
     row.last_sync_at = sync_time
 
 
+def _latest_store_data_window(db: Session, poi_id: Any) -> dict[str, Any]:
+    """读取门店业绩数据窗口，团购链接详情页用同一口径展示更新时间。"""
+    poi_id_text = str(poi_id or "").strip()
+    if not poi_id_text:
+        return {}
+    store = (
+        db.query(StorePerformance)
+        .filter(StorePerformance.poi_id == poi_id_text)
+        .order_by(StorePerformance.data_month.desc(), StorePerformance.updated_at.desc(), StorePerformance.id.desc())
+        .first()
+    )
+    if store is None:
+        return {}
+    display_text = store.data_month or ""
+    if store.data_month and store.data_start_day and store.data_end_day:
+        try:
+            month = int(str(store.data_month).split("-")[1])
+            display_text = f"{month}月, {store.data_start_day}~{store.data_end_day}号"
+        except (IndexError, TypeError, ValueError):
+            display_text = store.data_month or ""
+    return {
+        "data_month": store.data_month,
+        "data_start_day": store.data_start_day,
+        "data_end_day": store.data_end_day,
+        "display_text": display_text,
+        "updated_at": store.updated_at.isoformat(timespec="seconds") if store.updated_at else "",
+    }
+
+
 async def sync_douyin_computer_cleaning_status(db: Session | None = None) -> dict[str, Any]:
-    """实时查询抖音接口，并同步电脑清灰团购开通状态到本地数据库。"""
+    """实时查询抖音接口，并同步团购链接开通状态到本地数据库。"""
     own_session = db is None
     session = db or SessionLocal()
     sync_log_id: int | None = None
@@ -295,10 +371,10 @@ async def sync_douyin_computer_cleaning_status(db: Session | None = None) -> dic
         client = DouyinClient(DouyinTokenManager(settings))
         api_query_started_at = datetime.now()
         logger.info(
-            "电脑清灰团购状态同步: 开始实时调用抖音接口 %s，query_all_poi=true，本次不复用历史商品查询结果",
-            PRODUCT_ONLINE_QUERY_ENDPOINT,
+            "团购链接状态同步: 开始按固定商品 ID 调用抖音接口 %s，query_all_poi=true，本次不复用历史商品查询结果",
+            PRODUCT_ONLINE_GET_ENDPOINT,
         )
-        online_products = await fetch_computer_cleaning_online_products(client)
+        online_products = await fetch_group_purchase_online_products(client)
         api_query_finished_at = datetime.now()
         opened_by_poi = _build_open_products_by_poi(online_products)
 
@@ -325,21 +401,22 @@ async def sync_douyin_computer_cleaning_status(db: Session | None = None) -> dic
         result = {
             "account_id": settings.douyin_account_id,
             "data_month": latest_month,
-            "target_product_ids": sorted(TARGET_PRODUCT_IDS.keys()),
+            "target_product_ids": GROUP_PURCHASE_TARGET_PRODUCT_IDS,
+            "target_products": GROUP_PURCHASE_TARGET_PRODUCTS,
             "online_product_count": len(online_products),
-            "target_product_count": len({item["product_id"] for products in opened_by_poi.values() for item in products}),
+            "target_product_count": len({item.get("product_id", "") for products in opened_by_poi.values() for item in products}),
             "opened_poi_count": len(opened_by_poi),
             "store_poi_count": len(store_poi_ids),
             "updated_status_count": len(all_poi_ids),
             "sync_query_mode": SYNC_QUERY_MODE,
             "sync_query_mode_text": SYNC_QUERY_MODE_TEXT,
-            "api_endpoint": PRODUCT_ONLINE_QUERY_ENDPOINT,
+            "api_endpoint": PRODUCT_ONLINE_GET_ENDPOINT,
             "query_all_poi": True,
             "api_query_started_at": api_query_started_at.isoformat(timespec="seconds"),
             "api_query_finished_at": api_query_finished_at.isoformat(timespec="seconds"),
             "last_sync_at": sync_time.isoformat(timespec="seconds"),
         }
-        logger.info("电脑清灰团购状态同步完成: %s", result)
+        logger.info("团购链接状态同步完成: %s", result)
         return result
     except Exception as exc:
         session.rollback()
@@ -350,7 +427,7 @@ async def sync_douyin_computer_cleaning_status(db: Session | None = None) -> dic
                 log_row.error_message = str(exc)
                 log_row.finished_at = datetime.now()
                 session.commit()
-        logger.exception("电脑清灰团购状态同步失败")
+        logger.exception("团购链接状态同步失败")
         raise
     finally:
         if own_session:
@@ -358,7 +435,7 @@ async def sync_douyin_computer_cleaning_status(db: Session | None = None) -> dic
 
 
 def build_store_computer_cleaning_summary(db: Session, poi_id: Any) -> dict[str, Any]:
-    """构造侧边栏使用的电脑清灰开通状态摘要。"""
+    """构造侧边栏使用的团购链接摘要，并保留电脑清灰旧字段兼容前端。"""
     poi_id_text = str(poi_id or "").strip()
     if not poi_id_text:
         return {
@@ -367,6 +444,12 @@ def build_store_computer_cleaning_summary(db: Session, poi_id: Any) -> dict[str,
             "computer_cleaning_product_ids": [],
             "computer_cleaning_product_names": [],
             "computer_cleaning_last_sync_time": "",
+            "group_purchase_opened": False,
+            "group_purchase_status": "未开通",
+            "group_purchase_product_ids": [],
+            "group_purchase_product_names": [],
+            "group_purchase_products": [],
+            "group_purchase_last_sync_time": "",
         }
 
     row = (
@@ -382,20 +465,74 @@ def build_store_computer_cleaning_summary(db: Session, poi_id: Any) -> dict[str,
             "computer_cleaning_product_ids": [],
             "computer_cleaning_product_names": [],
             "computer_cleaning_last_sync_time": "",
+            "group_purchase_opened": False,
+            "group_purchase_status": "未开通",
+            "group_purchase_product_ids": [],
+            "group_purchase_product_names": [],
+            "group_purchase_products": [],
+            "group_purchase_last_sync_time": "",
         }
 
     is_opened = bool(row.is_opened)
+    product_ids = _json_loads_list(row.matched_product_ids)
+    product_names = _json_loads_list(row.matched_product_names)
+    products = []
+    grouped_products: dict[str, dict[str, Any]] = {}
+    for index, product_name in enumerate(product_names):
+        product_id = str(product_ids[index] if index < len(product_ids) else "").strip()
+        simplified_name = str(product_name or "").strip()
+        if not simplified_name:
+            simplified_name = _target_group_purchase_name(product_id) or "未命名团购商品"
+        group = grouped_products.setdefault(
+            simplified_name,
+            {
+                "product_id": "",
+                "product_ids": [],
+                "product_name": simplified_name,
+                "matched_keywords": [],
+            },
+        )
+        if product_id and product_id not in group["product_ids"]:
+            group["product_ids"].append(product_id)
+    for product in grouped_products.values():
+        product["product_id"] = "、".join(product["product_ids"])
+        products.append(product)
+    last_sync_time = row.last_sync_at.isoformat(timespec="seconds") if row.last_sync_at else ""
     return {
         "computer_cleaning_opened": is_opened,
         "computer_cleaning_status": "已开通" if is_opened else "未开通",
-        "computer_cleaning_product_ids": _json_loads_list(row.matched_product_ids),
-        "computer_cleaning_product_names": _json_loads_list(row.matched_product_names),
-        "computer_cleaning_last_sync_time": row.last_sync_at.isoformat(timespec="seconds") if row.last_sync_at else "",
+        "computer_cleaning_product_ids": product_ids,
+        "computer_cleaning_product_names": product_names,
+        "computer_cleaning_last_sync_time": last_sync_time,
+        "group_purchase_opened": is_opened,
+        "group_purchase_status": "已开通" if is_opened else "未开通",
+        "group_purchase_product_ids": product_ids,
+        "group_purchase_product_names": product_names,
+        "group_purchase_products": products,
+        "group_purchase_last_sync_time": last_sync_time,
+    }
+
+
+def build_store_group_purchase_summary(db: Session, poi_id: Any) -> dict[str, Any]:
+    """按门店 ID 返回团购链接详情页使用的数据。"""
+    summary = build_store_computer_cleaning_summary(db, poi_id)
+    store_data_window = _latest_store_data_window(db, poi_id)
+    return {
+        "poi_id": str(poi_id or "").strip(),
+        "opened": summary["group_purchase_opened"],
+        "status": summary["group_purchase_status"],
+        "products": summary["group_purchase_products"],
+        "product_count": len(summary["group_purchase_products"]),
+        "target_product_ids": GROUP_PURCHASE_TARGET_PRODUCT_IDS,
+        "target_products": GROUP_PURCHASE_TARGET_PRODUCTS,
+        "last_sync_at": summary["group_purchase_last_sync_time"],
+        "store_data_update_text": store_data_window.get("display_text", ""),
+        "store_data_window": store_data_window,
     }
 
 
 def get_douyin_computer_cleaning_status(db: Session) -> dict[str, Any]:
-    """读取电脑清灰团购同步状态，不返回任何密钥信息。"""
+    """读取团购链接同步状态，不返回任何密钥信息。"""
     last_log = (
         db.query(DataSyncLog)
         .filter(DataSyncLog.sync_type == "douyin_computer_cleaning_status")
@@ -414,10 +551,11 @@ def get_douyin_computer_cleaning_status(db: Session) -> dict[str, Any]:
             and get_settings().douyin_client_secret
             and get_settings().douyin_account_id
         ),
-        "target_product_ids": sorted(TARGET_PRODUCT_IDS.keys()),
+        "target_product_ids": GROUP_PURCHASE_TARGET_PRODUCT_IDS,
+        "target_products": GROUP_PURCHASE_TARGET_PRODUCTS,
         "sync_query_mode": SYNC_QUERY_MODE,
         "sync_query_mode_text": SYNC_QUERY_MODE_TEXT,
-        "api_endpoint": PRODUCT_ONLINE_QUERY_ENDPOINT,
+        "api_endpoint": PRODUCT_ONLINE_GET_ENDPOINT,
         "query_all_poi": True,
         "status_count": status_count,
         "opened_count": opened_count,

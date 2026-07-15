@@ -33,20 +33,21 @@ class Settings(BaseSettings):
     fanke_client_id: str = ""
     fanke_client_secret: str = ""
     fanke_platform_code: str = "FKW"
-    fanke_return_url: str = "https://jxjfix.com/api/v1/fanke/oauth/callback"
+    fanke_return_url: str = ""
 
     # Cookie失效告警配置
     cookie_alert_userid: str = ""  # 接收Cookie失效通知的管理员userid
 
     # 服务配置
     api_prefix: str = "/api/v1"
+    public_base_url: str = "http://localhost:5173"
     cors_origins: list[str] = ["*"]
     internal_api_token: str = ""  # 内部服务调用令牌；为空时不启用校验
 
     # Redis配置
     redis_url: str = "redis://localhost:6379/0"
 
-    # MySQL数据库配置，公开版本不提供默认密码，部署时请通过环境变量或 .env 配置。
+    # MySQL数据库配置
     mysql_host: str = "localhost"
     mysql_port: str = "3306"
     mysql_user: str = ""

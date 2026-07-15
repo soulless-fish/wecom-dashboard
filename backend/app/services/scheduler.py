@@ -509,23 +509,112 @@ async def sync_douyin_official_recent_order_data():
 
 async def sync_douyin_computer_cleaning_data():
     """
-    同步抖音电脑清灰团购开通状态
+    同步抖音团购链接开通状态
 
-    该任务每天跟随抖音来客门店数据更新节奏执行，用于刷新侧边栏“电脑清灰：已开通/未开通”字段。
+    该任务每天跟随抖音来客门店数据更新节奏执行，用于刷新侧边栏团购链接字段。
     """
     try:
         from app.services.douyin_computer_cleaning_sync import sync_douyin_computer_cleaning_status
 
-        logger.info("抖音电脑清灰定时任务: 开始同步团购商品开通状态")
+        logger.info("抖音团购链接定时任务: 开始同步团购商品开通状态")
         result = await sync_douyin_computer_cleaning_status()
         logger.info(
-            "抖音电脑清灰定时任务: 同步完成，在线目标商品%s个，开通门店%s个，更新状态%s条",
+            "抖音团购链接定时任务: 同步完成，在线目标商品%s个，开通门店%s个，更新状态%s条",
             result.get("target_product_count"),
             result.get("opened_poi_count"),
             result.get("updated_status_count"),
         )
     except Exception as exc:
-        logger.error("抖音电脑清灰定时任务: 同步失败 - %s", exc)
+        logger.error("抖音团购链接定时任务: 同步失败 - %s", exc)
+
+
+async def sync_douyin_poi_account_binding_data():
+    """
+    同步抖音门店子机构经营号
+
+    该任务跟随抖音来客门店数据更新节奏执行，用于刷新侧边栏“子机构经营号”字段。
+    """
+    try:
+        from app.services.douyin_poi_account_sync import sync_douyin_poi_account_bindings
+
+        logger.info("抖音门店子机构经营号定时任务: 开始同步")
+        result = await sync_douyin_poi_account_bindings()
+        logger.info(
+            "抖音门店子机构经营号定时任务: 同步完成，写入%s条，清理旧错误数据%s条",
+            result.get("record_count"),
+            result.get("deleted_wrong_record_count"),
+        )
+    except Exception as exc:
+        logger.error("抖音门店子机构经营号定时任务: 同步失败 - %s", exc)
+
+
+async def sync_douyin_shop_business_status_data():
+    """
+    同步抖音门店营业状态
+
+    该任务每天刷新一次门店营业状态，侧边栏只读取本地缓存表，避免打开页面时实时请求来客后台。
+    """
+    try:
+        from app.services.douyin_shop_business_status_sync import sync_douyin_shop_business_status
+
+        logger.info("抖音门店营业状态定时任务: 开始同步")
+        result = await sync_douyin_shop_business_status()
+        logger.info(
+            "抖音门店营业状态定时任务: 同步完成，写入%s条，状态分布%s",
+            result.get("record_count"),
+            result.get("status_count"),
+        )
+    except Exception as exc:
+        logger.error("抖音门店营业状态定时任务: 同步失败 - %s", exc)
+
+
+async def sync_jlyq_local_promotion_data():
+    """
+    同步巨量引擎本地推账号投放数据
+
+    该任务跟随抖音来客门店数据更新时间执行，每天覆盖当前月展示窗口的数据。
+    """
+    try:
+        from JLYQ.local_promotion_service import sync_jlyq_local_promotion_metrics
+
+        logger.info("巨量本地推定时任务: 开始同步账号投放数据")
+        result = await asyncio.to_thread(sync_jlyq_local_promotion_metrics)
+        if result.get("success"):
+            logger.info(
+                "巨量本地推定时任务: 同步完成，写入%s条，权限绑定%s条，未匹配%s条，失败%s条",
+                result.get("records"),
+                result.get("binding_count"),
+                result.get("unresolved_count"),
+                result.get("failed_count"),
+            )
+        else:
+            logger.error("巨量本地推定时任务: 同步未成功 - %s", result.get("error") or result)
+    except Exception as exc:
+        logger.error("巨量本地推定时任务: 同步失败 - %s", exc)
+
+
+async def sync_jlyq_collection_form_answers():
+    """每十分钟读取企业微信官方收集表答案并更新商家月累计。"""
+    try:
+        from app.config import get_settings
+        from JLYQ.wecom_collection_service import sync_wecom_collection_forms
+
+        result = await sync_wecom_collection_forms(get_settings())
+        if result.get("failed"):
+            logger.warning(
+                "巨量商家填写表同步完成但有失败项，检查%s，更新%s，失败%s",
+                result.get("checked"),
+                result.get("updated"),
+                result.get("failed"),
+            )
+        elif result.get("checked"):
+            logger.info(
+                "巨量商家填写表同步完成，检查%s，更新%s",
+                result.get("checked"),
+                result.get("updated"),
+            )
+    except Exception as exc:
+        logger.error("巨量商家填写表定时同步失败: %s", exc)
 
 
 def start_scheduler():
@@ -565,17 +654,53 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # 每天上午11:20刷新一次电脑清灰团购状态，和抖音来客门店数据更新任务保持同一时间。
+    # 每天上午11:20刷新一次团购链接状态，和抖音来客门店数据更新任务保持同一时间。
     scheduler.add_job(
         sync_douyin_computer_cleaning_data,
         trigger=CronTrigger(hour=11, minute=20),
         id="sync_douyin_computer_cleaning_status",
-        name="同步电脑清灰团购状态",
+        name="同步团购链接状态",
         replace_existing=True
     )
 
+    # 每天上午11:20同步门店子机构经营号，和抖音来客门店数据更新任务保持同一时间。
+    scheduler.add_job(
+        sync_douyin_poi_account_binding_data,
+        trigger=CronTrigger(hour=11, minute=20),
+        id="sync_douyin_poi_account_bindings",
+        name="同步门店子机构经营号",
+        replace_existing=True
+    )
+
+    # 每天上午11:35同步门店营业状态，避开11:20的门店业绩、团购链接和经营号同步高峰。
+    scheduler.add_job(
+        sync_douyin_shop_business_status_data,
+        trigger=CronTrigger(hour=11, minute=35),
+        id="sync_douyin_shop_business_status",
+        name="同步门店营业状态",
+        replace_existing=True
+    )
+
+    # 每天上午09:00同步巨量引擎本地推数据，按侧边栏巨量模块单独更新时间执行。
+    scheduler.add_job(
+        sync_jlyq_local_promotion_data,
+        trigger=CronTrigger(hour=9, minute=0),
+        id="sync_jlyq_local_promotion_data",
+        name="同步巨量本地推投放数据",
+        replace_existing=True
+    )
+
+    # 每十分钟同步官方收集表答案；安全网页填写表提交时会直接入库，无需轮询。
+    scheduler.add_job(
+        sync_jlyq_collection_form_answers,
+        trigger=IntervalTrigger(minutes=10),
+        id="sync_jlyq_collection_form_answers",
+        name="同步巨量商家填写表答案",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("定时任务调度器已启动 (抖音/来客每天11:20，电脑清灰每天11:20，凡科订单每天11:50，抖音官方订单每天12:20)")
+    logger.info("定时任务调度器已启动 (巨量本地推每天09:00，巨量商家填写表每10分钟同步，抖音/来客每天11:20，团购链接每天11:20，门店子机构经营号每天11:20，门店营业状态每天11:35，凡科订单每天11:50，抖音官方订单每天12:20)")
 
 
 def stop_scheduler():

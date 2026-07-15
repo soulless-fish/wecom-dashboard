@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f8cff"/>
+      <stop offset="0.58" stop-color="#0f62fe"/>
+      <stop offset="1" stop-color="#073b9e"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#eef5ff" stop-opacity="0.96"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" rx="28" fill="url(#background)"/>
+  <circle cx="568" cy="52" r="92" fill="#ffffff" opacity="0.08"/>
+  <circle cx="76" cy="330" r="118" fill="#ffffff" opacity="0.07"/>
+  <rect x="58" y="48" width="524" height="264" rx="22" fill="url(#panel)"/>
+  <rect x="88" y="82" width="56" height="56" rx="16" fill="#0f62fe"/>
+  <text x="116" y="121" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="30" font-weight="700" fill="#ffffff">极</text>
+  <text x="164" y="106" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" fill="#172033">经营数据填写</text>
+  <text x="164" y="134" font-family="Arial, Microsoft YaHei, sans-serif" font-size="15" fill="#667085">填写后自动更新巨量引擎月累计</text>
+  <rect x="88" y="170" width="464" height="1" fill="#dce6f5"/>
+  <g font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#344054">
+    <text x="96" y="208">③ 加微信量</text>
+    <text x="328" y="208">④ 手机回收量</text>
+    <text x="96" y="252">⑤ 手机销售量</text>
+    <text x="328" y="252">抖音引流利润</text>
+  </g>
+  <rect x="88" y="276" width="464" height="5" rx="3" fill="#0f62fe" opacity="0.16"/>
+</svg>

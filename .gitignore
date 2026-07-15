@@ -23,6 +23,9 @@ yarn-error.log*
 !.env.example
 cookie_config.json
 life_data_cookie_config.json
+fanke_token_config.json
+JLYQ/jlyq_token_config.json
+JLYQ/jlyq_oauth_callback_log.jsonl
 *.pem
 *.key
 *.p12
@@ -41,6 +44,7 @@ temp/
 *.csv
 *.db
 *.sqlite
+JLYQ/*.xlsx
 
 # IDE / OS
 .idea/

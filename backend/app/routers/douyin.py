@@ -20,8 +20,22 @@ from app.services.douyin_order_sync import (
     sync_douyin_official_orders,
 )
 from app.services.douyin_computer_cleaning_sync import (
+    build_store_group_purchase_summary,
     get_douyin_computer_cleaning_status,
     sync_douyin_computer_cleaning_status,
+)
+from app.services.douyin_poi_account_sync import (
+    get_douyin_poi_account_binding_status,
+    sync_douyin_poi_account_bindings,
+)
+from app.services.douyin_shop_business_status_sync import (
+    get_douyin_shop_business_status,
+    sync_douyin_shop_business_status,
+)
+from app.services.douyin_craftsman_sync import (
+    build_store_douyin_account_detail,
+    get_douyin_craftsman_binding_status,
+    sync_douyin_craftsman_bindings,
 )
 from app.models.schemas import (
     APIResponse,
@@ -215,8 +229,8 @@ async def get_poi_list(
     """
     try:
         result = await client.get_poi_list(
-            page_num=page_num,
-            page_size=page_size
+            page=page_num,
+            size=page_size
         )
 
         return APIResponse(
@@ -371,6 +385,17 @@ async def sync_computer_cleaning_status(db: Session = Depends(get_db)):
         return APIResponse(code=-1, message=str(e), data=None)
 
 
+@router.post("/group-purchase/sync", response_model=APIResponse, summary="同步门店团购链接状态")
+async def sync_group_purchase_status(db: Session = Depends(get_db)):
+    """同步商家已上线的团购链接商品状态。"""
+    try:
+        result = await sync_douyin_computer_cleaning_status(db)
+        return APIResponse(code=0, message="团购链接状态同步完成", data=result)
+    except Exception as e:
+        logger.exception("团购链接状态同步失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
 @router.get("/computer-cleaning/status", response_model=APIResponse, summary="电脑清灰团购同步状态")
 async def computer_cleaning_status(db: Session = Depends(get_db)):
     """查看电脑清灰团购状态同步情况，不返回密钥或 token。"""
@@ -382,6 +407,130 @@ async def computer_cleaning_status(db: Session = Depends(get_db)):
         )
     except Exception as e:
         logger.exception("读取电脑清灰团购状态失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.get("/group-purchase/status", response_model=APIResponse, summary="团购链接同步状态")
+async def group_purchase_status(db: Session = Depends(get_db)):
+    """查看团购链接同步情况，不返回密钥或 token。"""
+    try:
+        return APIResponse(
+            code=0,
+            message="success",
+            data=get_douyin_computer_cleaning_status(db),
+        )
+    except Exception as e:
+        logger.exception("读取团购链接状态失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.get("/group-purchase/store-links", response_model=APIResponse, summary="获取门店团购链接列表")
+async def get_store_group_purchase_links(
+    poi_id: str,
+    db: Session = Depends(get_db),
+):
+    """按门店 ID 返回该门店命中的团购链接商品列表。"""
+    try:
+        return APIResponse(
+            code=0,
+            message="success",
+            data=build_store_group_purchase_summary(db, poi_id),
+        )
+    except Exception as e:
+        logger.exception("读取门店团购链接列表失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.post("/poi-account-bindings/sync", response_model=APIResponse, summary="同步门店子机构经营号")
+async def sync_poi_account_bindings(db: Session = Depends(get_db)):
+    """同步 goodlife 门店信息中的 SUB_ORG 子机构经营号。"""
+    try:
+        result = await sync_douyin_poi_account_bindings(db)
+        return APIResponse(code=0, message="门店子机构经营号同步完成", data=result)
+    except Exception as e:
+        logger.exception("门店子机构经营号同步失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.get("/poi-account-bindings/status", response_model=APIResponse, summary="门店子机构经营号同步状态")
+async def poi_account_binding_status(db: Session = Depends(get_db)):
+    """查看门店子机构经营号同步状态，不返回密钥或 token。"""
+    try:
+        return APIResponse(
+            code=0,
+            message="success",
+            data=get_douyin_poi_account_binding_status(db),
+        )
+    except Exception as e:
+        logger.exception("读取门店子机构经营号同步状态失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.get("/poi-account-bindings/store-accounts", response_model=APIResponse, summary="获取门店抖音号详情")
+async def get_store_douyin_accounts(
+    poi_id: str = Query("", description="门店ID"),
+    poi_name: str = Query("", description="门店名称"),
+    db: Session = Depends(get_db),
+):
+    """按门店ID和门店名称返回子机构经营号、商家职人号、个人职人号。"""
+    try:
+        return APIResponse(
+            code=0,
+            message="success",
+            data=build_store_douyin_account_detail(db, poi_id=poi_id, poi_name=poi_name),
+        )
+    except Exception as e:
+        logger.exception("读取门店抖音号详情失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.post("/shop-business-status/sync", response_model=APIResponse, summary="同步门店营业状态")
+async def sync_shop_business_status(db: Session = Depends(get_db)):
+    """同步来客门店营业状态，侧边栏读取本地缓存表。"""
+    try:
+        result = await sync_douyin_shop_business_status(db)
+        return APIResponse(code=0, message="门店营业状态同步完成", data=result)
+    except Exception as e:
+        logger.exception("门店营业状态同步失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.get("/shop-business-status/status", response_model=APIResponse, summary="门店营业状态同步状态")
+async def shop_business_status(db: Session = Depends(get_db)):
+    """查看门店营业状态同步情况，不返回 Cookie 或密钥。"""
+    try:
+        return APIResponse(
+            code=0,
+            message="success",
+            data=get_douyin_shop_business_status(db),
+        )
+    except Exception as e:
+        logger.exception("读取门店营业状态失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.post("/craftsman-bindings/sync", response_model=APIResponse, summary="同步抖音职人号绑定信息")
+async def sync_craftsman_bindings(db: Session = Depends(get_db)):
+    """同步商家总户下职人绑定信息，用于抖音号详情页展示。"""
+    try:
+        result = await sync_douyin_craftsman_bindings(db)
+        return APIResponse(code=0, message="抖音职人号同步完成", data=result)
+    except Exception as e:
+        logger.exception("抖音职人号同步失败")
+        return APIResponse(code=-1, message=str(e), data=None)
+
+
+@router.get("/craftsman-bindings/status", response_model=APIResponse, summary="抖音职人号同步状态")
+async def craftsman_binding_status(db: Session = Depends(get_db)):
+    """查看本地抖音职人号同步状态，不返回密钥或 token。"""
+    try:
+        return APIResponse(
+            code=0,
+            message="success",
+            data=get_douyin_craftsman_binding_status(db),
+        )
+    except Exception as e:
+        logger.exception("读取抖音职人号同步状态失败")
         return APIResponse(code=-1, message=str(e), data=None)
 
 

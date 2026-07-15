@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(env_path)
 
-# MySQL数据库配置，公开版本不提供默认账号密码，部署时请通过环境变量或 .env 配置。
+# MySQL数据库配置
 MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
 MYSQL_PORT = os.environ.get("MYSQL_PORT", "3306")
 MYSQL_USER = os.environ.get("MYSQL_USER", "")
@@ -271,6 +271,244 @@ class DouyinComputerCleaningStatus(Base):
 
     def __repr__(self):
         return f"<DouyinComputerCleaningStatus(poi_id='{self.poi_id}', is_opened={self.is_opened})>"
+
+
+class DouyinPoiAccountBinding(Base):
+    """
+    抖音门店绑定经营抖音号表
+
+    保存 goodlife/v1/shop/poi/query/ 返回的子机构经营号关系，侧边栏按 poi_id 读取门店绑定的抖音号。
+    """
+    __tablename__ = "douyin_poi_account_bindings"
+    __table_args__ = (
+        UniqueConstraint("account_id", "poi_id", name="uq_douyin_poi_account_binding"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    account_id = Column(String(64), nullable=False, index=True, comment="抖音来客商户账号ID")
+    poi_id = Column(String(64), nullable=False, index=True, comment="抖音门店ID")
+    poi_name = Column(String(255), default="", index=True, comment="抖音门店名称")
+
+    poi_account_id = Column(String(64), default="", index=True, comment="门店绑定经营抖音号ID")
+    poi_account_name = Column(String(255), default="", index=True, comment="门店绑定经营抖音号昵称")
+    poi_account_type = Column(String(64), default="", comment="绑定类型，例如 SUB_ORG")
+
+    parent_account_id = Column(String(64), default="", index=True, comment="父级账号ID")
+    parent_account_name = Column(String(255), default="", comment="父级账号名称")
+    parent_account_type = Column(String(64), default="", comment="父级账号类型")
+
+    root_account_id = Column(String(64), default="", index=True, comment="根账号ID")
+    root_account_name = Column(String(255), default="", comment="根账号名称")
+    root_account_type = Column(String(64), default="", comment="根账号类型")
+
+    raw_json = Column(Text, nullable=True, comment="官方接口原始门店账号关系JSON")
+    source_status = Column(String(32), default="success", index=True, comment="最近一次同步状态")
+    last_sync_at = Column(DateTime, nullable=True, index=True, comment="最近一次同步时间")
+
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+    def __repr__(self):
+        return f"<DouyinPoiAccountBinding(poi_id='{self.poi_id}', poi_account_name='{self.poi_account_name}')>"
+
+
+class DouyinShopBusinessStatus(Base):
+    """
+    抖音门店营业状态表
+
+    保存来客门店关系接口返回的门店营业状态，侧边栏按 poi_id 优先读取，
+    poi_id 缺失或跨源不一致时再按规整后的门店名称兜底匹配。
+    """
+    __tablename__ = "douyin_shop_business_status"
+    __table_args__ = (
+        UniqueConstraint("account_id", "poi_id", name="uq_douyin_shop_business_account_poi"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    account_id = Column(String(64), nullable=False, index=True, comment="抖音来客商户账号ID")
+    poi_id = Column(String(64), nullable=False, index=True, comment="抖音门店ID")
+    poi_name = Column(String(255), default="", index=True, comment="抖音门店名称")
+    normalized_poi_name = Column(String(255), default="", index=True, comment="规整后的门店名称")
+    poi_remark_name = Column(String(255), default="", comment="来客门店备注名")
+    poi_life_account_id = Column(String(64), default="", index=True, comment="门店生活服务账号ID")
+
+    business_status_code = Column(Integer, default=0, index=True, comment="营业状态码")
+    business_status_text = Column(String(32), default="", index=True, comment="营业状态文案")
+    source_status = Column(String(32), default="success", index=True, comment="最近一次同步状态")
+    raw_json = Column(Text, nullable=True, comment="来客门店关系接口原始JSON")
+    last_sync_at = Column(DateTime, nullable=True, index=True, comment="最近一次同步时间")
+
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+    def __repr__(self):
+        return f"<DouyinShopBusinessStatus(poi_id='{self.poi_id}', status='{self.business_status_text}')>"
+
+
+class DouyinCraftsmanBinding(Base):
+    """
+    抖音职人号绑定信息表
+
+    保存开放平台职人绑定接口返回的商家职人号和个人职人号，详情页按门店名称或门店ID展示。
+    """
+    __tablename__ = "douyin_craftsman_bindings"
+    __table_args__ = (
+        UniqueConstraint("account_id", "craftsman_type", "craftsman_uid", "poi_id", name="uq_douyin_craftsman_binding"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    account_id = Column(String(64), nullable=False, index=True, comment="抖音来客商户总户账号ID")
+    source_account_id = Column(String(64), default="", index=True, comment="接口返回的职人所属账号ID")
+    poi_id = Column(String(64), default="", index=True, comment="职人绑定门店ID")
+    poi_name = Column(String(255), default="", index=True, comment="职人绑定门店名称")
+
+    craftsman_type = Column(String(32), nullable=False, index=True, comment="职人号分类，merchant商家职人号，personal个人职人号")
+    craftsman_uid = Column(String(64), default="", index=True, comment="职人唯一ID")
+    aweme_id = Column(String(64), default="", index=True, comment="抖音号ID或短ID")
+    aweme_name = Column(String(255), default="", index=True, comment="抖音号昵称")
+
+    operator_name = Column(String(255), default="", comment="运营员工或店内身份信息")
+    employee_info = Column(String(255), default="", comment="就职信息")
+    position_title = Column(String(255), default="", comment="职位头衔")
+    is_violation = Column(String(64), default="", comment="是否违规")
+    valid_fans_count = Column(Integer, default=0, comment="有效粉丝数")
+    bring_goods_permission = Column(String(64), default="", comment="带货权限")
+
+    status = Column(String(64), default="", index=True, comment="职人绑定状态")
+    raw_json = Column(Text, nullable=True, comment="职人绑定接口原始JSON")
+    last_sync_at = Column(DateTime, nullable=True, index=True, comment="最近一次同步时间")
+
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+    def __repr__(self):
+        return f"<DouyinCraftsmanBinding(poi_name='{self.poi_name}', aweme_name='{self.aweme_name}')>"
+
+
+class JlyqLocalPromotionMetric(Base):
+    """
+    巨量引擎本地推账户指标表
+
+    每天按当前展示窗口覆盖写入两类数据：
+    - yesterday：昨天单日数据
+    - month_to_yesterday：本月1号到昨天的累计数据
+    """
+    __tablename__ = "jlyq_local_promotion_metrics"
+    __table_args__ = (
+        UniqueConstraint(
+            "binding_key",
+            "range_type",
+            "range_start_date",
+            "range_end_date",
+            name="uq_jlyq_local_binding_range",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # 权限表绑定字段，用于把 Excel 中的门店和子账户稳定关联到数据库记录。
+    binding_key = Column(String(191), nullable=False, index=True, comment="权限表账号绑定键")
+    store_name = Column(String(255), default="", index=True, comment="权限表店铺名称")
+    douyin_store_name = Column(String(255), default="", index=True, comment="权限表抖音来客店名")
+    account_source_column = Column(String(64), default="", comment="账号来源列")
+
+    # 巨量本地推账户字段，账号ID在未完成远端匹配时允许为空。
+    account_id = Column(String(64), default="", index=True, comment="巨量本地推账户ID")
+    account_name = Column(String(255), nullable=False, index=True, comment="巨量本地推账户名称")
+    account_key = Column(String(191), nullable=False, index=True, comment="远端账号匹配键")
+
+    # 数据窗口字段，保留昨天和本月累计两种窗口，侧边栏直接读取当前窗口。
+    range_type = Column(String(32), nullable=False, index=True, comment="数据窗口类型")
+    range_start_date = Column(Date, nullable=False, comment="数据开始日期")
+    range_end_date = Column(Date, nullable=False, comment="数据结束日期")
+    data_month = Column(String(7), nullable=False, index=True, comment="数据月份(YYYY-MM)")
+
+    # 业务指标字段，金额统一按元保存。
+    spend_yuan = Column(Numeric(14, 2), default=0.00, comment="消耗(元)")
+    conversion_count = Column(Integer, default=0, comment="转化数")
+    conversion_cost_yuan = Column(Numeric(14, 2), default=0.00, comment="转化成本(元)")
+    balance_yuan = Column(Numeric(14, 2), default=0.00, comment="账户余额(元)")
+
+    # 同步状态和原始响应摘要，便于后续排查字段变化。
+    sync_status = Column(String(32), default="success", index=True, comment="同步状态")
+    error_message = Column(Text, nullable=True, comment="同步错误信息")
+    raw_report_json = Column(Text, nullable=True, comment="报表接口原始响应JSON")
+    raw_fund_json = Column(Text, nullable=True, comment="余额接口原始响应JSON")
+    synced_at = Column(DateTime, default=datetime.now, index=True, comment="同步时间")
+
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+    def __repr__(self):
+        return f"<JlyqLocalPromotionMetric(account_name='{self.account_name}', range_type='{self.range_type}')>"
+
+
+class JlyqMerchantDailyInput(Base):
+    """
+    巨量引擎商家每日填写数据表。
+
+    每个巨量账号每天只保留一份填写记录，重复提交会覆盖当天数据，
+    月累计值由同月每日记录实时汇总，避免重复提交造成累计翻倍。
+    """
+    __tablename__ = "jlyq_merchant_daily_inputs"
+    __table_args__ = (
+        UniqueConstraint(
+            "binding_key",
+            "data_date",
+            name="uq_jlyq_merchant_binding_date",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # 巨量账号和外部群上下文，用于把填写结果回写到正确模板。
+    binding_key = Column(String(191), nullable=False, index=True, comment="权限表账号绑定键")
+    account_id = Column(String(64), default="", index=True, comment="巨量本地推账号ID")
+    account_name = Column(String(255), default="", index=True, comment="巨量本地推账号名称")
+    store_name = Column(String(255), default="", index=True, comment="权限表店铺名称")
+    group_name = Column(String(255), default="", index=True, comment="企业微信外部群名称")
+    chat_id = Column(String(128), default="", index=True, comment="企业微信外部群ID")
+
+    # 每日记录所属日期和月份，日期对应巨量模板中展示的昨天。
+    data_date = Column(Date, nullable=False, index=True, comment="商家填写数据对应日期")
+    data_month = Column(String(7), nullable=False, index=True, comment="数据月份(YYYY-MM)")
+
+    # 官方收集表优先，缺少企业微信文档权限时自动使用安全网页填写页。
+    channel = Column(String(32), default="web_fallback", index=True, comment="wecom_form或web_fallback")
+    public_token = Column(String(128), nullable=False, unique=True, index=True, comment="公开填写页随机令牌")
+    formid = Column(String(128), default=None, unique=True, nullable=True, comment="企业微信收集表ID")
+    repeated_id = Column(String(128), default="", index=True, comment="企业微信收集表周期ID")
+    share_url = Column(Text, nullable=True, comment="发送到外部群的填写链接")
+    form_title = Column(String(255), default="", comment="填写表标题")
+    permission_error = Column(Text, nullable=True, comment="企业微信文档权限错误摘要")
+
+    # 商家每日填写项；利润按模板含义保存为当月截至当前的累计利润，不做逐日求和。
+    wechat_count = Column(Integer, nullable=True, comment="当日加微信量")
+    recycle_count = Column(Integer, nullable=True, comment="当日手机回收量")
+    sales_count = Column(Integer, nullable=True, comment="当日手机销售量")
+    profit_yuan = Column(Numeric(14, 2), nullable=True, comment="商家填报的本月抖音引流总利润")
+
+    # 同步状态只保存答案标识和时间，不保存外部客户姓名、手机号等敏感信息。
+    status = Column(String(32), default="created", index=True, comment="created/sent/submitted/sync_error")
+    answer_id = Column(String(64), default="", comment="企业微信收集表答案ID")
+    answer_mtime = Column(Integer, default=0, comment="企业微信答案修改时间戳")
+    submit_count = Column(Integer, default=0, comment="该收集表当前有效提交数")
+    sync_error = Column(Text, nullable=True, comment="答案同步错误摘要")
+    sent_at = Column(DateTime, nullable=True, comment="文档卡片发送时间")
+    submitted_at = Column(DateTime, nullable=True, index=True, comment="最近提交时间")
+    last_sync_at = Column(DateTime, nullable=True, comment="最近同步时间")
+
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+    def __repr__(self):
+        return (
+            f"<JlyqMerchantDailyInput(binding_key='{self.binding_key}', "
+            f"data_date='{self.data_date}', status='{self.status}')>"
+        )
 
 
 def init_db():

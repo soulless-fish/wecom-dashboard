@@ -156,25 +156,26 @@ class DouyinClient:
 
     async def get_poi_list(
         self,
-        page_num: int = 1,
-        page_size: int = 20
+        page: int = 1,
+        size: int = 100
     ) -> dict[str, Any]:
         """
         获取门店列表
 
         Args:
-            page_num: 页码
-            page_size: 每页数量
+            page: 页码
+            size: 每页数量
 
         Returns:
             dict: 门店列表数据
         """
         return await self._request(
-            "POST",
+            "GET",
             "/goodlife/v1/shop/poi/query/",
-            data={
-                "page_num": page_num,
-                "page_size": page_size
+            params={
+                "account_id": self.token_manager.get_account_id(),
+                "page": page,
+                "size": size,
             },
             use_account_header=True
         )

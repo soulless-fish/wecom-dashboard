@@ -14,6 +14,26 @@ const routes = [
     path: '/dashboard',
     name: 'Dashboard',
     component: () => import('./views/Home.vue')
+  },
+  {
+    path: '/jlyq',
+    name: 'JlyqLocalPromotion',
+    component: () => import('./views/JlyqLocalPromotion.vue')
+  },
+  {
+    path: '/jlyq-form',
+    name: 'JlyqMerchantForm',
+    component: () => import('./views/JlyqMerchantForm.vue')
+  },
+  {
+    path: '/group-purchase',
+    name: 'GroupPurchaseLinks',
+    component: () => import('./views/GroupPurchaseLinks.vue')
+  },
+  {
+    path: '/douyin-accounts',
+    name: 'DouyinAccounts',
+    component: () => import('./views/DouyinAccounts.vue')
   }
 ]
 
